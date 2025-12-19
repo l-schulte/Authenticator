@@ -1,7 +1,9 @@
 node_modules
 build
+*.xpi
 chrome*
 firefox*
+thunderbird*
 edge*
 dist
 .vscode

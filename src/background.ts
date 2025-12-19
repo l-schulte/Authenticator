@@ -11,7 +11,7 @@ import {
 import { CodeState } from "./models/otp";
 
 import { getOTPAuthPerLineFromOPTAuthMigration } from "./models/migration";
-import { isChrome, isFirefox } from "./browser";
+import { isChrome, isFirefox, isThunderbird } from "./browser";
 import { UserSettings } from "./models/settings";
 
 let contentTab: chrome.tabs.Tab | undefined;
@@ -283,11 +283,9 @@ function getBackupToken(service: string) {
         redirUrl;
     } else if (service === "onedrive") {
       redirUrl = encodeURIComponent(chrome.identity.getRedirectURL());
-      authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${
-        getCredentials().onedrive.client_id
-      }&response_type=code&redirect_uri=${redirUrl}&scope=https%3A%2F%2Fgraph.microsoft.com%2FFiles.ReadWrite${
-        UserSettings.items.oneDriveBusiness !== true ? ".AppFolder" : ""
-      }%20https%3A%2F%2Fgraph.microsoft.com%2FUser.Read%20offline_access&response_mode=query&prompt=consent`;
+      authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${getCredentials().onedrive.client_id
+        }&response_type=code&redirect_uri=${redirUrl}&scope=https%3A%2F%2Fgraph.microsoft.com%2FFiles.ReadWrite${UserSettings.items.oneDriveBusiness !== true ? ".AppFolder" : ""
+        }%20https%3A%2F%2Fgraph.microsoft.com%2FUser.Read%20offline_access&response_mode=query&prompt=consent`;
     }
     chrome.identity.launchWebAuthFlow(
       { url: authUrl, interactive: true },
@@ -331,14 +329,14 @@ function getBackupToken(service: string) {
 
                 const response = await fetch(
                   "https://www.googleapis.com/oauth2/v4/token?client_id=" +
-                    getCredentials().drive.client_id +
-                    "&client_secret=" +
-                    getCredentials().drive.client_secret +
-                    "&code=" +
-                    value +
-                    "&redirect_uri=" +
-                    redirUrl +
-                    "&grant_type=authorization_code",
+                  getCredentials().drive.client_id +
+                  "&client_secret=" +
+                  getCredentials().drive.client_secret +
+                  "&code=" +
+                  value +
+                  "&redirect_uri=" +
+                  redirUrl +
+                  "&grant_type=authorization_code",
                   {
                     method: "POST",
                     headers: {
@@ -454,76 +452,189 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   return true;
 });
 
-chrome.commands.onCommand.addListener(async (command: string) => {
-  const { cachedPassphrase, cachedKeyId } = await chrome.storage.session.get();
+// Commands API is not available in Thunderbird
+if (chrome.commands) {
+  chrome.commands.onCommand.addListener(async (command: string) => {
+    const {
+      cachedPassphrase,
+      cachedKeyId,
+    } = await chrome.storage.session.get();
 
-  let tab: chrome.tabs.Tab | undefined;
+    let tab: chrome.tabs.Tab | undefined;
 
-  switch (command) {
-    case "scan-qr":
-      if (cachedPassphrase === null || cachedPassphrase === undefined) {
-        return;
-      }
+    switch (command) {
+      case "scan-qr":
+        if (cachedPassphrase === null || cachedPassphrase === undefined) {
+          return;
+        }
 
-      tab = await getCurrentTab();
-      if (okToInjectContentScript(tab)) {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ["/dist/content.js"],
-        });
-        await chrome.scripting.insertCSS({
-          target: { tabId: tab.id },
-          files: ["/css/content.css"],
-        });
+        tab = await getCurrentTab();
+        if (okToInjectContentScript(tab)) {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ["/dist/content.js"],
+          });
+          await chrome.scripting.insertCSS({
+            target: { tabId: tab.id },
+            files: ["/css/content.css"],
+          });
 
-        contentTab = tab;
-        chrome.tabs.sendMessage(tab.id, { action: "capture" });
-      }
-      break;
+          contentTab = tab;
+          chrome.tabs.sendMessage(tab.id, { action: "capture" });
+        }
+        break;
 
-    case "autofill":
-      tab = await getCurrentTab();
-      if (okToInjectContentScript(tab)) {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ["/dist/content.js"],
-        });
-        await chrome.scripting.insertCSS({
-          target: { tabId: tab.id },
-          files: ["/css/content.css"],
-        });
+      case "autofill":
+        tab = await getCurrentTab();
+        if (okToInjectContentScript(tab)) {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ["/dist/content.js"],
+          });
+          await chrome.scripting.insertCSS({
+            target: { tabId: tab.id },
+            files: ["/css/content.css"],
+          });
 
-        contentTab = tab;
+          contentTab = tab;
 
-        const siteName = await getSiteName();
-        const entries = await EntryStorage.get();
-        const matchedEntries = getMatchedEntries(siteName, entries);
+          const siteName = await getSiteName();
+          const entries = await EntryStorage.get();
+          const matchedEntries = getMatchedEntries(siteName, entries);
 
-        if (matchedEntries && matchedEntries.length === 1) {
-          const entry = matchedEntries[0];
-          const encryption = new Encryption(cachedPassphrase, cachedKeyId);
-          entry.applyEncryption(encryption);
+          if (matchedEntries && matchedEntries.length === 1) {
+            const entry = matchedEntries[0];
+            const encryption = new Encryption(cachedPassphrase, cachedKeyId);
+            entry.applyEncryption(encryption);
 
-          if (
-            entry.code !== CodeState.Encrypted &&
-            entry.code !== CodeState.Invalid
-          ) {
-            chrome.tabs.sendMessage(tab.id, {
-              action: "pastecode",
-              code: matchedEntries[0].code,
-            });
+            if (
+              entry.code !== CodeState.Encrypted &&
+              entry.code !== CodeState.Invalid
+            ) {
+              chrome.tabs.sendMessage(tab.id, {
+                action: "pastecode",
+                code: matchedEntries[0].code,
+              });
+            }
           }
         }
-      }
-      break;
+        break;
 
-    default:
-      break;
+      default:
+        break;
+    }
+
+    // https://stackoverflow.com/a/56483156
+    return true;
+  });
+}
+
+// Thunderbird-specific setup
+if (isThunderbird) {
+  interface ThunderbirdBrowser {
+    action?: {
+      onClicked?: {
+        addListener?: (callback: () => void) => void;
+      };
+    };
+    windows?: {
+      create?: (createData: {
+        url: string;
+        type: string;
+        height: number;
+        width: number;
+      }) => void;
+    };
+    tabs?: {
+      create?: (createData: { url: string }) => void;
+    };
+    menus?: {
+      create?: (createProperties: {
+        id: string;
+        title: string;
+        contexts: string[];
+      }) => void;
+      onClicked?: {
+        addListener?: (callback: () => void) => void;
+      };
+    };
+    commands?: {
+      onCommand?: {
+        addListener?: (callback: (command: string) => void) => void;
+      };
+    };
+  }
+  const tb = (chrome as unknown) as ThunderbirdBrowser;
+
+  // Function to open authenticator popup
+  const openAuthenticator = () => {
+    const popupUrl = chrome.runtime.getURL("view/popup.html");
+    try {
+      tb.windows?.create?.({
+        url: popupUrl,
+        type: "popup",
+        height: 600,
+        width: 400,
+      });
+    } catch (e) {
+      tb.tabs?.create?.({
+        url: popupUrl,
+      });
+    }
+  };
+
+  // Create Tools menu item
+  tb.menus?.create?.({
+    id: "open-authenticator",
+    title: chrome.i18n.getMessage("extName") || "Authenticator",
+    contexts: ["tools_menu"],
+  });
+
+  // Handle menu click
+  tb.menus?.onClicked?.addListener?.(openAuthenticator);
+
+  // Handle action button click
+  tb.action?.onClicked?.addListener?.(openAuthenticator);
+
+  // Handle keyboard shortcut
+  tb.commands?.onCommand?.addListener?.((command: string) => {
+    if (command === "open-authenticator") {
+      openAuthenticator();
+    }
+  });
+
+  // Auto-open authenticator on login pages
+  interface WebNavigationDetails {
+    url: string;
+  }
+  interface WebNavigation {
+    onCommitted: {
+      addListener: (callback: (details: WebNavigationDetails) => void) => void;
+    };
   }
 
-  // https://stackoverflow.com/a/56483156
-  return true;
-});
+  const chromeWithNav = (chrome as unknown) as {
+    webNavigation?: WebNavigation;
+  };
+  if (chromeWithNav.webNavigation) {
+    chromeWithNav.webNavigation.onCommitted.addListener(
+      (details: WebNavigationDetails) => {
+        // List of login pages that should trigger auto-open
+        const loginPages = [
+          "login.microsoftonline.com",
+          "login.live.com",
+          "accounts.google.com",
+        ];
+
+        const url = new URL(details.url);
+        if (loginPages.some((page) => url.hostname.includes(page))) {
+          // Open authenticator when on a login page
+          openAuthenticator();
+        }
+      }
+    );
+  }
+}
 
 async function setAutolock() {
   const enforcedAutolock = Number(
@@ -548,6 +659,11 @@ async function setAutolock() {
 }
 
 async function updateContextMenu() {
+  // Context menus are not available in Thunderbird
+  if (isThunderbird || !chrome.permissions) {
+    return;
+  }
+
   chrome.permissions.contains(
     {
       permissions: ["contextMenus"],

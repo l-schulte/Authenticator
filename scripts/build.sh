@@ -13,8 +13,8 @@ CREDREGEX='^.*".+".*".+".*".+".*".+".*".+".*$'
 STYLEFILES="./src/* ./src/**/* ./src/**/**/* ./src/**/**/**/* ./sass/*.scss"
 set -e
 
-if [[ $PLATFORM != "chrome" ]] && [[ $PLATFORM != "firefox" ]] && [[ $PLATFORM != "edge" ]] && [[ $PLATFORM != "prod" ]] && [[ $PLATFORM != "test" ]]; then
-    echo "Invalid platform type. Supported platforms are 'chrome', 'firefox', 'test', and 'prod'"
+if [[ $PLATFORM != "chrome" ]] && [[ $PLATFORM != "firefox" ]] && [[ $PLATFORM != "edge" ]] && [[ $PLATFORM != "thunderbird" ]] && [[ $PLATFORM != "prod" ]] && [[ $PLATFORM != "test" ]]; then
+    echo "Invalid platform type. Supported platforms are 'chrome', 'firefox', 'thunderbird', 'edge', 'test', and 'prod'"
     exit 1
 fi
 
@@ -90,9 +90,10 @@ postCompile () {
 if [[ $PLATFORM = "prod" ]]; then
     postCompile "chrome"
     postCompile "firefox"
+    postCompile "thunderbird"
     postCompile "edge"
     mkdir release
-    mv chrome firefox edge release
+    mv chrome firefox thunderbird edge release
 elif [[ $PLATFORM = "test" ]]; then
     postCompile "chrome"
     postCompile "firefox"

@@ -7,3 +7,4 @@ export const isSafari =
 export const isChrome =
   navigator.userAgent.indexOf("Chrome") !== -1 &&
   navigator.userAgent.indexOf("Edg") === -1;
+export const isThunderbird = navigator.userAgent.indexOf("Thunderbird") >= 0;
